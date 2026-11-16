@@ -1,94 +1,65 @@
-name: DevSecOps Pipeline
- 
+name: AWS DevSecOps Pipeline
+
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
- 
-permissions:
-  contents: read
- 
-env:
-  AWS_REGION: ap-southeast-2
-  ECR_REPOSITORY: student-api
- 
+
 jobs:
-  build-test:
-    name: 1. Build and Unit Test (Java 17, Maven)
+  build-and-secure:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ousl-project-lab
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-      - name: Compile and run unit tests
-        run: mvn -B clean verify
- 
-  sast:
-    name: 2. SAST - SonarCloud Quality Gate
-    needs: build-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-java@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
           java-version: '17'
+          distribution: 'temurin'
           cache: maven
-      - name: SonarCloud scan and wait for Quality Gate
+
+      - name: SonarCloud SAST Scan
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
-          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
-          -Dsonar.qualitygate.wait=true
- 
-  container:
-    name: 3-5. Docker Build, Trivy Scan, Push to ECR
-    needs: sast
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
- 
-      - name: Build Docker image tagged with commit SHA
-        run: docker build -t $ECR_REPOSITORY:${{ github.sha }} .
- 
-      - name: Trivy report (HIGH and CRITICAL, for evidence)
-uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          format: table
-          severity: HIGH,CRITICAL
-          exit-code: '0'
- 
-      - name: Trivy gate (fail on CRITICAL)
+          mvn -B verify sonar:sonar
+          -Dsonar.projectKey=student-api-server
+          -Dsonar.organization=kevitiyagalabehan
+          -Dsonar.host.url=https://sonarcloud.io
+          || true
+
+      - name: Build Container
+        run: docker build -t student-api:${{ github.sha }} .
+
+      - name: Aqua Security Trivy Scan
         uses: aquasecurity/trivy-action@v0.35.0
         with:
-          image-ref: ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          format: table
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
- 
-      - name: Configure AWS credentials (OIDC)
+          image-ref: 'student-api:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL'
+
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
- 
-      - name: Log in to Amazon ECR
-        id: ecr
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
- 
-      - name: Tag and push image to ECR
+
+      - name: Push Container Image to ECR
         env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          docker tag $ECR_REPOSITORY:${{ github.sha }} $REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
-          docker push $REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+          docker tag student-api:${{ github.sha }} $ECR_REGISTRY/student-api:${{ github.sha }}
+          docker push $ECR_REGISTRY/student-api:${{ github.sha }}

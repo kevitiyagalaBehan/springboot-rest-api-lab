@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ousl-project-lab
+        working-directory: demo
 
     steps:
       - name: Checkout Code
@@ -29,11 +29,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
-          mvn -B verify sonar:sonar
+          ./mvnw -B verify sonar:sonar
           -Dsonar.projectKey=student-api-server
           -Dsonar.organization=kevitiyagalabehan
           -Dsonar.host.url=https://sonarcloud.io
-          || true
+          -Dsonar.qualitygate.wait=true
 
       - name: Build Container
         run: docker build -t student-api:${{ github.sha }} .
@@ -43,7 +43,7 @@ jobs:
         with:
           image-ref: 'student-api:${{ github.sha }}'
           format: 'table'
-          exit-code: '0'
+          exit-code: '1'
           severity: 'CRITICAL'
 
       - name: Configure AWS Credentials

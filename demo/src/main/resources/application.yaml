@@ -2,9 +2,12 @@ spring:
   application:
     name: student-api
   datasource:
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    # sslmode=require forces an encrypted (TLS) connection to Amazon RDS.
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}?sslmode=${DB_SSLMODE:require}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
   jpa:
     hibernate:
       ddl-auto: update
@@ -18,3 +21,12 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      # Shows each health component (db, diskSpace, ping) without leaking details,
+      # e.g. {"status":"UP","components":{"db":{"status":"UP"}, ...}}
+      show-components: always
+      show-details: never
+  health:
+    db:
+      enabled: true

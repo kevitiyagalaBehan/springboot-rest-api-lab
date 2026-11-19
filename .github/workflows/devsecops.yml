@@ -2,16 +2,21 @@ name: DevSecOps Pipeline
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch: # lets you re-run the pipeline manually from the Actions tab
+    branches: [ main ]
+  workflow_dispatch:        # lets you re-run the pipeline manually from the Actions tab
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: demo   # all 'run' steps execute inside the project folder
+
 env:
+  APP_DIR: demo             # folder in the repo that contains pom.xml and Dockerfile
   AWS_REGION: ap-southeast-2
   ECR_REPOSITORY: springboot-rest-api-lab
-  JAVA_VERSION: "17"
+  JAVA_VERSION: '17'
 
 jobs:
   # ---------------------------------------------------------------
@@ -29,6 +34,7 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+          cache-dependency-path: ${{ env.APP_DIR }}/pom.xml
 
       - name: Compile, run unit tests, build JAR
         run: mvn -B verify
@@ -39,8 +45,8 @@ jobs:
         with:
           name: test-reports
           path: |
-            target/surefire-reports/
-            target/site/jacoco/
+            ${{ env.APP_DIR }}/target/surefire-reports/
+            ${{ env.APP_DIR }}/target/site/jacoco/
 
   # ---------------------------------------------------------------
   # 2. SAST with SonarCloud + Quality Gate enforcement
@@ -52,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history gives Sonar accurate "new code" analysis
+          fetch-depth: 0            # full history gives Sonar accurate "new code" analysis
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -60,6 +66,7 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+          cache-dependency-path: ${{ env.APP_DIR }}/pom.xml
 
       - name: Cache SonarCloud packages
         uses: actions/cache@v4
@@ -98,7 +105,7 @@ jobs:
       - name: Trivy scan (report HIGH and CRITICAL)
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            -v ${{ github.workspace }}:/out aquasec/trivy:latest image \
+            -v ${{ github.workspace }}/${{ env.APP_DIR }}:/out aquasec/trivy:latest image \
             --severity HIGH,CRITICAL --no-progress --format table \
             --output /out/trivy-report.txt \
             ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
@@ -116,9 +123,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
-          path: trivy-report.txt
+          path: ${{ env.APP_DIR }}/trivy-report.txt
 
-      # 5. Secure AWS authentication (OIDC role) and push to ECR
+      # 5. Secure AWS authentication and push to ECR
       - name: Configure AWS credentials (least-privilege IAM user, keys in GitHub Secrets)
         uses: aws-actions/configure-aws-credentials@v4
         with:

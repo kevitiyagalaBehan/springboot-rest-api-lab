@@ -3,6 +3,7 @@ package lk.student.api.demo.controller;
 import java.util.List;
 
 import jakarta.validation.Valid;
+import lk.student.api.demo.dto.StudentRequest;
 import lk.student.api.demo.model.Student;
 import lk.student.api.demo.service.StudentService;
 import org.springframework.http.HttpStatus;
@@ -38,13 +39,13 @@ public class StudentController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public Student create(@Valid @RequestBody Student student) {
-		return service.create(student);
+	public Student create(@Valid @RequestBody StudentRequest request) {
+		return service.create(request.toEntity());
 	}
 
 	@PutMapping("/{id}")
-	public Student update(@PathVariable Long id, @Valid @RequestBody Student student) {
-		return service.update(id, student);
+	public Student update(@PathVariable Long id, @Valid @RequestBody StudentRequest request) {
+		return service.update(id, request.toEntity());
 	}
 
 	@DeleteMapping("/{id}")
